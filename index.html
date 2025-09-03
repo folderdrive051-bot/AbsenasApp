@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aplikasi Absensi Multi-User</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f9; }
+    h1 { text-align: center; color: #333; }
+    .container { max-width: 900px; margin: auto; background: #fff; padding: 20px;
+                 border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    input, select, button { padding: 8px; margin: 5px; border-radius: 5px; border: 1px solid #ccc; }
+    button { cursor: pointer; background: #007bff; color: white; border: none; }
+    button:hover { background: #0056b3; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { padding: 10px; border: 1px solid #ccc; text-align: center; }
+    th { background: #007bff; color: white; }
+    .full { background-color:#d4edda; color:#155724; }
+    .half { background-color:#fff3cd; color:#856404; }
+    .alpa { background-color:#f8d7da; color:#721c24; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Aplikasi Absensi Multi-User</h1>
+
+    <div id="registerDiv">
+      <h3>Registrasi Pengguna</h3>
+      <input type="text" id="regName" placeholder="Nama Lengkap">
+      <input type="text" id="regFinger" placeholder="ID Fingerprint Simulasi">
+      <button onclick="registerUser()">Daftar</button>
+    </div>
+
+    <div id="loginDiv">
+      <h3>Login Pengguna</h3>
+      <input type="text" id="loginFinger" placeholder="ID Fingerprint">
+      <button onclick="loginUser()">Login</button>
+    </div>
+
+    <div id="userDiv" style="display:none;">
+      <h3>Selamat Datang, <span id="userName"></span></h3>
+      <button onclick="absenMasuk()">Fingerprint Masuk</button>
+      <button onclick="absenPulang()">Fingerprint Pulang</button>
+
+      <div id="todayLog" style="margin:10px 0;"></div>
+
+      <div>
+        Pilih Bulan: <select id="pilihBulan"></select>
+        Tahun: <select id="pilihTahun"></select>
+        <button onclick="buatLaporan()">Buat Laporan Bulanan</button>
+        <button onclick="resetBulan()">Reset Bulan</button>
+      </div>
+
+      <button onclick="downloadLaporan()">Download Laporan JPG</button>
+
+      <div id="log">
+        <h3>Log Absensi</h3>
+        <ul id="logList"></ul>
+      </div>
+
+      <div id="laporan">
+        <h3>Laporan Bulanan</h3>
+        <div id="laporanContent"></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+let users = JSON.parse(localStorage.getItem("usersData") || "{}");
+let absensi = JSON.parse(localStorage.getItem("absensiData") || "{}");
+let currentUser = null;
+
+const bulanSelect = document.getElementById("pilihBulan");
+const tahunSelect = document.getElementById("pilihTahun");
+const bulanNama = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
+for(let i=0;i<12;i++){ let opt=document.createElement("option"); opt.value=i; opt.text=bulanNama[i]; bulanSelect.appendChild(opt); }
+const now = new Date();
+for(let y=now.getFullYear()-5;y<=now.getFullYear()+1;y++){ let opt=document.createElement("option"); opt.value=y; opt.text=y; tahunSelect.appendChild(opt); }
+bulanSelect.value = now.getMonth();
+tahunSelect.value = now.getFullYear();
+
+function saveData(){ localStorage.setItem("usersData",JSON.stringify(users)); localStorage.setItem("absensiData",JSON.stringify(absensi)); }
+
+function registerUser(){
+  const name = document.getElementById("regName").value.trim();
+  const finger = document.getElementById("regFinger").value.trim();
+  if(!name || !finger){ alert("Isi semua kolom!"); return; }
+  if(users[finger]){ alert("Fingerprint sudah terdaftar!"); return; }
+  users[finger] = { name:name };
+  saveData();
+  alert("Registrasi berhasil!");
+  document.getElementById("regName").value=""; document.getElementById("regFinger").value="";
+}
+
+function loginUser(){
+  const finger = document.getElementById("loginFinger").value.trim();
+  if(!users[finger]){ alert("Fingerprint tidak terdaftar!"); return; }
+  currentUser = finger;
+  document.getElementById("userDiv").style.display="block";
+  document.getElementById("userName").textContent = users[finger].name;
+  document.getElementById("loginDiv").style.display="none";
+  document.getElementById("registerDiv").style.display="none";
+  renderTodayLog();
+}
+
+function getTanggal(){ return new Date().toISOString().split('T')[0]; }
+
+function absenMasuk(){
+  if(!currentUser){ alert("Login dulu!"); return; }
+  let tgl = getTanggal();
+  if(!absensi[currentUser]) absensi[currentUser]={};
+  if(!absensi[currentUser][tgl]) absensi[currentUser][tgl]={masuk:false,pulang:false};
+  absensi[currentUser][tgl].masuk = true;
+  saveData();
+  tambahLog("Masuk: "+tgl);
+  renderTodayLog();
+}
+
+function absenPulang(){
+  if(!currentUser){ alert("Login dulu!"); return; }
+  let tgl = getTanggal();
+  if(!absensi[currentUser]) absensi[currentUser]={};
+  if(!absensi[currentUser][tgl]) absensi[currentUser][tgl]={masuk:false,pulang:false};
+  absensi[currentUser][tgl].pulang = true;
+  saveData();
+  tambahLog("Pulang: "+tgl);
+  renderTodayLog();
+}
+
+function tambahLog(teks){
+  const li = document.createElement("li");
+  li.textContent = teks;
+  document.getElementById("logList").appendChild(li);
+}
+
+function renderTodayLog(){
+  if(!currentUser) return;
+  const todayDiv = document.getElementById("todayLog");
+  const tgl = getTanggal();
+  if(!absensi[currentUser]) absensi[currentUser]={};
+  if(!absensi[currentUser][tgl]) absensi[currentUser][tgl]={masuk:false,pulang:false};
+  const data = absensi[currentUser][tgl];
+  let statusText = "";
+  if(data.masuk && data.pulang) statusText = "✅ Masuk & Pulang (Full Day)";
+  else if(data.masuk && !data.pulang) statusText = "🌓 Masuk saja (Setengah Hari)";
+  else statusText = "❌ Belum absen hari ini";
+  todayDiv.innerHTML = "<b>Hari Ini ("+tgl+"):</b> "+statusText;
+}
+
+function buatLaporan(){
+  if(!currentUser){ alert("Login dulu!"); return; }
+  const laporanDiv = document.getElementById("laporanContent");
+  laporanDiv.innerHTML = "";
+  const bulan = parseInt(bulanSelect.value);
+  const tahun = parseInt(tahunSelect.value);
+  const daysInMonth = new Date(tahun,bulan+1,0).getDate();
+  let full=0, half=0, alpa=0;
+  let laporanHTML = "<table><tr><th>Tanggal</th><th>Status</th></tr>";
+  for(let day=1;day<=daysInMonth;day++){
+    let tgl = new Date(tahun,bulan,day);
+    if(tgl.getDay()===6) continue; // Sabtu libur
+    let tglStr = tgl.toISOString().split('T')[0];
+    if(!absensi[currentUser][tglStr]) absensi[currentUser][tglStr]={masuk:false,pulang:false};
+    let data = absensi[currentUser][tglStr];
+    let statusClass="", statusText="";
+    if(data.masuk && data.pulang){ full++; statusClass="full"; statusText="✅ Full Day"; }
+    else if(data.masuk && !data.pulang){ half++; statusClass="half"; statusText="🌓 Setengah Hari"; }
+    else { alpa++; statusClass="alpa"; statusText="❌ Alpa"; }
+    laporanHTML += "<tr class='"+statusClass+"'><td>"+tglStr+"</td><td>"+statusText+"</td></tr>";
+  }
+  laporanHTML += "</table>";
+  laporanHTML += "<p><b>Rekap Bulanan:</b><br>Full Day: "+full+"<br>Setengah Hari: "+half+"<br>Alpa: "+alpa+"</p>";
+  laporanDiv.innerHTML = laporanHTML;
+  saveData();
+}
+
+function resetBulan(){
+  if(!currentUser){ alert("Login dulu!"); return; }
+  const bulan = parseInt(bulanSelect.value);
+  const tahun = parseInt(tahunSelect.value);
+  const daysInMonth = new Date(tahun,bulan+1,0).getDate();
+  for(let day=1;day<=daysInMonth;day++){
+    let tgl = new Date(tahun,bulan,day);
+    if(tgl.getDay()===6) continue;
+    let tglStr = tgl.toISOString().split('T')[0];
+    if(absensi[currentUser][tglStr]) delete absensi[currentUser][tglStr];
+  }
+  saveData();
+  buatLaporan();
+}
+
+function downloadLaporan(){
+  if(!currentUser){ alert("Login dulu!"); return; }
+  const laporan = document.getElementById("laporan");
+  html2canvas(laporan,{backgroundColor:"#ffffff"}).then(canvas=>{
+    const c=document.createElement("canvas");
+    c.width = canvas.width; c.height = canvas.height;
+    const ctx = c.getContext("2d");
+    ctx.drawImage(canvas,0,0);
+    ctx.font="60px Arial"; ctx.fillStyle="rgba(0,0,0,0.1)";
+    ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.translate(c.width/2,c.height/2); ctx.rotate(-Math.PI/4);
+    ctx.fillText("APPderajat",0,0);
+    let link=document.createElement("a");
+    link.download="Laporan_"+users[currentUser].name+".jpg";
+    link.href=c.toDataURL("image/jpeg",1.0);
+    link.click();
+  });
+}
+</script>
+</body>
+</html>
